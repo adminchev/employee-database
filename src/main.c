@@ -29,7 +29,7 @@ int main(int argc, char *argv[]) {
 				break;
 
 			case '?':
-				printf("Unknown option -%c\n.", c);
+				printf("Unknown option -%c.\n", c);
 				break;
 
 			default:
@@ -45,4 +45,13 @@ int main(int argc, char *argv[]) {
 
 	printf("Newfile : %d\n", newfile);
 	printf("Filepath: %s\n", filepath);
+  
+  if (newfile == true) {
+    int fd = create_db_file(filepath);
+    if (fd == -1){
+      printf("Failed to create file %s\n", filepath);
+      return STATUS_ERROR;
+    }
+  }
+  return 0;
 }

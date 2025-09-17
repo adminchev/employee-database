@@ -10,11 +10,29 @@
 
 
 int create_db_file(char *filename) {
+  int dbfd;
+  dbfd = open(filename, O_RDONLY);
+  if (dbfd != -1) {
+    perror("open");
+    printf("File already exists");
+    return STATUS_ERROR;
+  };
+
+  dbfd = open(filename, O_RDWR | O_CREAT, 0640);
+  if (dbfd == -1) {
+    perror("open");
+    return STATUS_ERROR;
+  };
 
 }
 
 int open_db_file(char *filename) {
-
+  int dbfd;
+  dbfd = open(filename, O_RDONLY);
+  if (dbfd == -1) {
+    perror("open");
+    return STATUS_ERROR;
+  };
 }
 
 
