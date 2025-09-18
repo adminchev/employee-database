@@ -16,6 +16,7 @@ void print_usage(char *argv[]) {
 int main(int argc, char *argv[]) { 
 	char *filepath = NULL;
 	bool newfile = false;
+  int dbfd = -1;
 	int c = 0;
 
 	while (( c = getopt(argc, argv, "nf:")) != -1 ) {
@@ -33,25 +34,32 @@ int main(int argc, char *argv[]) {
 				break;
 
 			default:
-				return -1;
+				return STATUS_ERROR;
 		}
 	}
 
 	if (filepath == NULL) {
 		printf("Filepath is a required argument.\n");
 		print_usage(argv);
-		return 0;
+		return STATUS_SUCCESS;
 	}
 
 	printf("Newfile : %d\n", newfile);
 	printf("Filepath: %s\n", filepath);
   
   if (newfile == true) {
-    int fd = create_db_file(filepath);
-    if (fd == -1){
+    dbfd = create_db_file(filepath);
+    if (dbfd == -1){
       printf("Failed to create file %s\n", filepath);
       return STATUS_ERROR;
     }
   }
+
+  dbfd = open_db_file(filepath);
+  if (dbfd == -1) {
+    printf("Could not open file\n");
+    return STATUS_ERROR;
+  }
+
   return 0;
 }
