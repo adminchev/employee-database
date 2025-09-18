@@ -18,6 +18,8 @@ int main(int argc, char *argv[]) {
 	bool newfile = false;
   int dbfd = -1;
 	int c = 0;
+  struct dbheader_t *header = NULL;
+  struct employee_t *employee = NULL;
 
 	while (( c = getopt(argc, argv, "nf:")) != -1 ) {
 		switch(c){
@@ -49,17 +51,31 @@ int main(int argc, char *argv[]) {
   
   if (newfile == true) {
     dbfd = create_db_file(filepath);
+    
     if (dbfd == -1){
       printf("Failed to create file %s\n", filepath);
       return STATUS_ERROR;
-    }
-  }
+    };
+    
+    if (create_db_header(dbfd, &header) == STATUS_ERROR) {
+      printf("Failed to create database header\n");
+      return STATUS_ERROR;
+    };
+  } else {
 
-  dbfd = open_db_file(filepath);
-  if (dbfd == -1) {
-    printf("Could not open file\n");
-    return STATUS_ERROR;
-  }
+    dbfd = open_db_file(filepath);
+    if (dbfd == -1) {
+      printf("Could not open file\n");
+      return STATUS_ERROR;
+    };
+
+    if (validate_db_header(dbfd, &header) == STATUS_ERROR) {
+      printf("Failed to validate database header");
+      return STATUS_ERROR;
+    };
+  };
+
+  output_file(dbfd, header, employee);
 
   return 0;
 }
