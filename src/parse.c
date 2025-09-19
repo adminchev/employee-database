@@ -13,19 +13,24 @@
 void list_employees(struct dbheader_t *dbhdr, struct employee_t *employees) {
 }
 
-int add_employee(struct dbheader_t *dbhdr, struct employee_t *employees, char *addstring) {
-  printf("%s\n", addstring);
+int add_employee(struct dbheader_t *dbhdr, struct employee_t **employees, char *addstring) {
+
+  if (employees == NULL) {
+    printf("Failed to create new employee\n");
+    return STATUS_ERROR;
+  };
+
   char *name = strtok(addstring, ",");
   char *address = strtok(NULL, ",");
   char *hours_string = strtok(NULL, ",");
   int hours = atoi(hours_string);
   int count = dbhdr->count;
   // employees->name = *name;
-  strncpy(employees[count - 1].name, name, sizeof(employees[count - 1].name));
-  strncpy(employees[count - 1].address, address, sizeof(employees[count - 1].address));
-  employees[count - 1].hours = hours;
+  strncpy((*employees)[count - 1].name, name, sizeof((*employees)[count - 1].name));
+  strncpy((*employees)[count - 1].address, address, sizeof((*employees)[count - 1].address));
+  (*employees)[count - 1].hours = hours;
 
-  dbhdr->filesize = dbhdr->filesize + sizeof(employees[count - 1]);
+  dbhdr->filesize = dbhdr->filesize + sizeof((*employees)[count - 1]);
 
   return STATUS_SUCCESS;
 };

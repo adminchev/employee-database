@@ -89,7 +89,7 @@ int main(int argc, char *argv[]) {
   if (addstring != NULL) {
     header->count++;
     employees = realloc(employees, header->count * (sizeof(struct employee_t)));
-    add_employee(header, employees, addstring);
+    add_employee(header, &employees, addstring);
   };
 
   output_file(dbfd, header, employees);
