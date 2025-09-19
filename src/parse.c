@@ -11,14 +11,49 @@
 #include "parse.h"
 
 void list_employees(struct dbheader_t *dbhdr, struct employee_t *employees) {
-
 }
 
 int add_employee(struct dbheader_t *dbhdr, struct employee_t *employees, char *addstring) {
+  printf("%s\n", addstring);
+  char *name = strtok(addstring, ",");
+  char *address = strtok(NULL, ",");
+  char *hours_string = strtok(NULL, ",");
+  int hours = atoi(hours_string);
+  int count = dbhdr->count;
+  // employees->name = *name;
+  strncpy(employees[count - 1].name, name, sizeof(employees[count - 1].name));
+  strncpy(employees[count - 1].address, address, sizeof(employees[count - 1].address));
+  employees[count - 1].hours = hours;
 
-}
+  dbhdr->filesize = dbhdr->filesize + sizeof(employees[count - 1]);
+
+  return STATUS_SUCCESS;
+};
 
 int read_employees(int fd, struct dbheader_t *dbhdr, struct employee_t **employeesOut) {
+  if (fd < 0) {
+    printf("Bad file descriptor passed\n");
+    return STATUS_ERROR;
+  };
+
+  int count = dbhdr->count;
+  struct employee_t *employees = calloc(count, sizeof(struct employee_t));
+  if (employees == NULL) {
+    printf("Malloc failed\n");
+    return STATUS_ERROR;
+  };
+
+  if (read(fd, employees, count * sizeof(struct employee_t)) == -1) {
+    perror("read");
+    return STATUS_ERROR;
+  };
+
+  for (int i = 0; i < count; i++) {
+    employees[i].hours = ntohl(employees[i].hours);
+  };
+
+  *employeesOut = employees;
+  return STATUS_SUCCESS;
 
 }
 
@@ -27,14 +62,24 @@ int output_file(int fd, struct dbheader_t *dbhdr, struct employee_t *employees) 
     printf("Got bad file descriptor\n");
     return STATUS_ERROR;
   };
-
-  dbhdr->magic = ntohl(dbhdr->magic);
-  dbhdr->version = ntohs(dbhdr->version);
-  dbhdr->count = ntohs(dbhdr->count);
-  dbhdr->filesize = ntohl(dbhdr->filesize);
+  
+  int realcount = dbhdr->count;
+  dbhdr->magic = htonl(dbhdr->magic);
+  dbhdr->version = htons(dbhdr->version);
+  dbhdr->count = htons(dbhdr->count);
+  dbhdr->filesize = htonl(sizeof(struct dbheader_t) + sizeof(struct employee_t) * realcount);
   
   lseek(fd, 0, SEEK_SET);
   write(fd, dbhdr, sizeof(struct dbheader_t));
+  
+  int i = 0;
+  for (; i < realcount; i++){
+    employees[i].hours = htonl(employees[i].hours);
+    write(fd, &employees[i], sizeof(struct employee_t));
+  };
+
+  // lseek(fd, 0, SEEK_END);
+  // write(fd, employees, sizeof(struct employee_t));
 }	
 
 int validate_db_header(int fd, struct dbheader_t **headerOut) {
@@ -79,6 +124,7 @@ int validate_db_header(int fd, struct dbheader_t **headerOut) {
   };
 
   if (dbfilestat.st_size != header->filesize) {
+    printf("st_size - %d, filesize - %d\n", dbfilestat.st_size, header->filesize);
     printf("Database file size mismatch, possible corruption\n");
     free(header);
     return STATUS_ERROR;
