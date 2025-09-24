@@ -5,7 +5,7 @@
 #define NAME_LEN 256
 #define ADDRESS_LEN 256
 
-
+  
 struct dbheader_t {
 	unsigned int magic;
 	unsigned short version;
@@ -25,5 +25,6 @@ int read_employees(int fd, struct dbheader_t *, struct employee_t **employeesOut
 int output_file(int fd, struct dbheader_t *, struct employee_t *employees);
 void list_employees(struct dbheader_t *dbhdr, struct employee_t *employees);
 int add_employee(struct dbheader_t *dbhdr, struct employee_t **employees, char *addstring);
+int delete_employee(struct dbheader_t *dbhdr, struct employee_t **employees, char *delstring);
 
 #endif

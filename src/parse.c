@@ -32,7 +32,6 @@ int add_employee(struct dbheader_t *dbhdr, struct employee_t **employees, char *
   char *hours_string = strtok(NULL, ",");
   int hours = atoi(hours_string);
   int count = dbhdr->count;
-  // employees->name = *name;
   strncpy((*employees)[count - 1].name, name, sizeof((*employees)[count - 1].name));
   strncpy((*employees)[count - 1].address, address, sizeof((*employees)[count - 1].address));
   (*employees)[count - 1].hours = hours;
@@ -41,6 +40,36 @@ int add_employee(struct dbheader_t *dbhdr, struct employee_t **employees, char *
 
   return STATUS_SUCCESS;
 };
+
+int delete_employee(struct dbheader_t *dbhdr, struct employee_t **employees, char *delstring) {
+  if (employees == NULL) {
+    printf("Failed to delete employee");
+    return STATUS_ERROR;
+  };
+
+  int employee_index = -1;
+  int dbcount = dbhdr->count;
+  int i = 0;
+
+  for (; i < dbcount; i++) {
+    if (strcmp((*employees)[i].name, delstring) == 0) {
+      employee_index = i;
+      printf("Deleting employee - %s\n", delstring);
+      break;
+    };
+  };
+  
+  if (employee_index == -1) {
+    printf("Employee not found\n");
+    return STATUS_ERROR;
+  };
+
+  for (i = employee_index; i < dbcount - 1; i++) {
+    (*employees)[i] = (*employees)[i + 1];
+  };
+
+  return STATUS_SUCCESS;
+}
 
 int read_employees(int fd, struct dbheader_t *dbhdr, struct employee_t **employeesOut) {
   if (fd < 0) {
@@ -89,9 +118,8 @@ int output_file(int fd, struct dbheader_t *dbhdr, struct employee_t *employees) 
     employees[i].hours = htonl(employees[i].hours);
     write(fd, &employees[i], sizeof(struct employee_t));
   };
-
-  // lseek(fd, 0, SEEK_END);
-  // write(fd, employees, sizeof(struct employee_t));
+  ftruncate(fd, sizeof(struct dbheader_t) + (realcount * sizeof(struct employee_t)));
+  return STATUS_SUCCESS;
 }	
 
 int validate_db_header(int fd, struct dbheader_t **headerOut) {
