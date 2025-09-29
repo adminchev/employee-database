@@ -164,7 +164,7 @@ int validate_db_header(int fd, struct dbheader_t **headerOut) {
   };
 
   if (dbfilestat.st_size != header->filesize) {
-    printf("st_size - %d, filesize - %d\n", dbfilestat.st_size, header->filesize);
+    printf("st_size - %ld, filesize - %u\n", dbfilestat.st_size, header->filesize);
     printf("Database file size mismatch, possible corruption\n");
     free(header);
     return STATUS_ERROR;
