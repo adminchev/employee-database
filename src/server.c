@@ -4,25 +4,24 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <arpa/inet.h>
 
 #define PORT 5555
 #define BACKLOG 10
+#define MAX_CLIENTS 10
 
 int main(int argc, char *argv[]) {
 	
 	int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
-	int opt = 1;
-	if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1){
-		perror("setsockopt");
-	};
 	
 	struct sockaddr_in server_info;
 	memset(&server_info, 0, sizeof(server_info));
     server_info.sin_family = AF_INET;
 	server_info.sin_addr.s_addr = htonl(INADDR_ANY);
 	server_info.sin_port = htons(PORT);
-	socklen_t addr_len = sizeof(server_info);
+	struct pollfd fds[MAX_CLIENTS + 1];
+	int nfds = 0;
 
 	if (bind(listen_fd, (struct sockaddr *)&server_info, sizeof(server_info)) == -1) {
 		perror("bind");
@@ -34,50 +33,64 @@ int main(int argc, char *argv[]) {
 		return -1;
 	};
 
-	fd_set master_set;
-	fd_set read_fds;
-
-	FD_ZERO(&master_set);
-	FD_ZERO(&read_fds);
-	FD_SET(listen_fd, &master_set);
-	int max_fd = listen_fd;
+	fds[0].fd = listen_fd;
+	fds[0].events = POLLIN;
+	nfds = 1;
 
 	while(1) {
-		read_fds = master_set;
-		if (select(max_fd + 1, &read_fds, NULL, NULL, NULL) == -1) {
-			perror("select");
-			exit(1);
-		};
-		int client_fd = -1;
-		for (int i = 0; i <= max_fd; i++) {
-			if (FD_ISSET(i, &read_fds)) {
-				if (i == listen_fd){
-					client_fd = accept(i, (struct sockaddr *)&server_info, &addr_len);
-					if (client_fd == -1) {
-						perror("accept");
-					} else {
-						FD_SET(client_fd, &master_set);
-						if (client_fd > max_fd) {
-							max_fd = client_fd;
+		int poll_count = poll(fds, nfds, -1);
+		if (poll_count < 0) {
+			perror("poll");
+			return -1;
+		} else if (poll_count == 0) {
+			continue;
+		} else {
+			for (int i = 0; i < nfds; i++) {
+
+				if (fds[i].revents & POLLIN) {
+
+					if (fds[i].fd == listen_fd) {
+						int new_conn = accept(listen_fd, NULL, NULL);
+
+						if (new_conn == -1) {
+							perror("accept");
+							continue;
+
+						}   else {
+							
+							if (nfds < MAX_CLIENTS + 1) {
+								fds[nfds].fd = new_conn;
+								fds[nfds].events = POLLIN;
+								nfds++;
+							} else {
+								close(new_conn);
+								printf("Too many connections. Exceeded %d\n", MAX_CLIENTS);
+							};
 						};
-					};
-				} else {
-					char buffer[1024];
-					int sock_data = read(i, buffer, sizeof(buffer));
-					if (sock_data <= 0) {
-						if (sock_data == 0) {
-							printf("Socket %d hung up\n", i);
+					
+					} else {
+						char buffer[256];
+						int nbytes = recv(fds[i].fd, buffer, sizeof(buffer), 0);
+
+						if (nbytes <= 0) {
+							if (nbytes == 0) {
+								printf("Client on fd %d disconnected.\n", fds[i].fd);
+							} else {
+								perror("recv");
+							};
+							close(fds[i].fd);
+							fds[i] = fds[nfds -1];
+							nfds--;
+							i--;
+					
 						} else {
-							perror("read");
+							printf("Data on fd %d: %s\n", fds[i].fd, buffer);
 						};
-						close(i);
-						FD_CLR(i, &master_set);
-					} else {
-						printf("sock %d: %.*s\n", i, sock_data, buffer);
 					};
-				}	
+				};
 			};
 		};
 	};
+
     return 0;
 }
