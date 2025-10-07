@@ -7,9 +7,9 @@
 #include <poll.h>
 #include <arpa/inet.h>
 
-#define PORT 5555
+#include "common.h"
+
 #define BACKLOG 10
-#define MAX_CLIENTS 10
 
 int main(int argc, char *argv[]) {
 	
