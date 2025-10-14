@@ -1,18 +1,18 @@
 CC = gcc
-CFLAGS = -Wall -g
+CFLAGS = -Wall -g -Iinclude
 DBVIEW_TARGET = bin/dbview
-SERVER_TARGET = bin/dbserver
-TARGETS = $(DBVIEW_TARGET) $(SERVER_TARGET)
+CLIENT_TARGET = bin/client
+TARGETS = $(DBVIEW_TARGET) $(CLIENT_TARGET)
 
-DBVIEW_SRC = src/main.c src/parse.c src/file.c
-SERVER_SRC = src/server.c
+DBVIEW_SRC = src/main.c src/parse.c src/file.c src/server.c
+CLIENT_SRC = src/client.c
 
 DBVIEW_OBJ = $(patsubst src/%.c, obj/%.o, $(DBVIEW_SRC))
-SERVER_OBJ = $(patsubst src/%.c, obj/%.o, $(SERVER_SRC))
+CLIENT_OBJ = $(patsubst src/%.c, obj/%.o, $(CLIENT_SRC))
 
 .PHONY: all clean run default
 
-all: clean $(TARGETS) run
+all: clean $(DBVIEW_TARGET) $(CLIENT_TARGET) run
 
 default: all
 
@@ -26,11 +26,11 @@ clean:
 	rm -f bin/*
 	rm -f *.db
 
-$(SERVER_TARGET): $(SERVER_OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ -Iinclude
+$(CLIENT_TARGET): $(CLIENT_OBJ)
+	$(CC) $(CFLAGS) -o $@ $^
 
 $(DBVIEW_TARGET): $(DBVIEW_OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ -Iinclude
+	$(CC) $(CFLAGS) -o $@ $^
 
 obj/%.o: src/%.c
-	$(CC) $(CFLAGS) -c -o $@ $< -Iinclude
+	$(CC) $(CFLAGS) -c -o $@ $<

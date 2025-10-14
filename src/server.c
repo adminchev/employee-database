@@ -6,13 +6,99 @@
 #include <netinet/in.h>
 #include <poll.h>
 #include <arpa/inet.h>
+#include <stdint.h>
 
 #include "common.h"
+#include "file.h"
+#include "parse.h" 
 
 #define BACKLOG 10
 
-int main(int argc, char *argv[]) {
+void initialize_clients(clientstate_t *state) {
+	for (int i = 0; i < MAX_CLIENTS; i++) {
+		state[i].fd = -1;
+		state[i].state = STATE_NEW;
+		state[i].bytes_received = 0;
+		memset(&state[i].request, 0, sizeof(request_t));
+	};
+}
+
+int find_free_slot(clientstate_t *state) {
+	for (int i = 0; i < MAX_CLIENTS; i++) {
+		if (state[i].fd == -1) {
+			return i;
+		}
+	}
+	printf("Max connections reached.\n");
+	return -1;
+}
+
+int find_slot_by_fd(clientstate_t *state, int fd) {
+	for (int i = 0; i < MAX_CLIENTS; i++) {
+		if (state[i].fd == fd) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+int free_slot(clientstate_t *state, int fd) {
+	for (int i = 0; i < MAX_CLIENTS; i++) {
+		if (state[i].fd == fd) {
+			state[i].fd = -1;
+			state[i].state = STATE_DISCONNECTED;
+			// memset(state[i].buffer, '\0', BUFF_SIZE);
+			state[i].bytes_received = 0;
+			memset(&state[i].request, '\0', sizeof(request_t));
+			return 0;
+		}
+	}
+	return -1; 
+}
+
+int handle_list_cmd(int fd, struct dbheader_t *dbhdr, clientstate_t *state, struct employee_t *employees) {
+	if (dbhdr == NULL) {
+		printf("Invalid refrence to header or to employees struct\n");
+		return -1;
+	};
+
+	char response[BUFF_SIZE] = {0};
+	int offset = 0;
+
+	offset += snprintf(response + offset, BUFF_SIZE - offset, "Number of employees: %d\n", dbhdr->count);
+
+	for (int i = 0; i < dbhdr->count; i++) {
+		offset += snprintf(response + offset, BUFF_SIZE - offset, "name: %s, address: %s, hours: %d", employees[i].name, employees[i].address, employees[i].hours);
+	};
+
+	if (send(fd, response, offset, 0) == -1){
+		perror("send");
+		return -1;
+	};
+	return offset;
 	
+};
+
+int handle_read(int fd, int *nbytes, struct dbheader_t *dbhdr, struct employee_t *employees, clientstate_t *state) {
+	int slot = find_slot_by_fd(state, fd);
+	if (slot == -1) {
+		printf("File descriptor not found for reading.\n");
+		return -1;
+	};
+ 	*nbytes = recv(fd, &state[slot].request, sizeof(request_t), 0);
+	if (*nbytes > 0) {
+		state[slot].bytes_received = *nbytes;
+	};
+	if (state[slot].request.cmd == CMD_LIST_EMPLOYEES) {
+		handle_list_cmd(state[slot].fd, dbhdr, state, employees);
+	};
+
+		return *nbytes;
+};
+
+int server_loop(int fd, struct dbheader_t *dbhdr, struct employee_t *employees) {
+    
+	clientstate_t state[MAX_CLIENTS] = {0};
 	int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
 	
 	struct sockaddr_in server_info;
@@ -22,6 +108,16 @@ int main(int argc, char *argv[]) {
 	server_info.sin_port = htons(PORT);
 	struct pollfd fds[MAX_CLIENTS + 1];
 	int nfds = 0;
+	int opt = 1;
+	int slot = -1;
+
+	initialize_clients(state);
+
+	// Allow port reuse - prevents "Address already in use" errors
+	if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
+		perror("setsockopt");
+		return -1;
+	}
 
 	if (bind(listen_fd, (struct sockaddr *)&server_info, sizeof(server_info)) == -1) {
 		perror("bind");
@@ -56,36 +152,58 @@ int main(int argc, char *argv[]) {
 							perror("accept");
 							continue;
 
-						}   else {
-							
-							if (nfds < MAX_CLIENTS + 1) {
-								fds[nfds].fd = new_conn;
-								fds[nfds].events = POLLIN;
-								nfds++;
-							} else {
+						} else {
+							slot = find_free_slot(state);
+							if (slot == -1 || nfds >= MAX_CLIENTS + 1) {
 								close(new_conn);
 								printf("Too many connections. Exceeded %d\n", MAX_CLIENTS);
+								continue;
 							};
+							state[slot].fd = new_conn;
+							state[slot].state = STATE_NEW;
+							memset(state[slot].request.data, '\0', BUFF_SIZE);
+							fds[nfds].fd = new_conn;
+							fds[nfds].events = POLLIN;
+							nfds++;
 						};
 					
 					} else {
-						char buffer[256];
-						int nbytes = recv(fds[i].fd, buffer, sizeof(buffer), 0);
-
-						if (nbytes <= 0) {
-							if (nbytes == 0) {
-								printf("Client on fd %d disconnected.\n", fds[i].fd);
-							} else {
-								perror("recv");
+						// char buffer[4096];
+						// int nbytes = recv(fds[i].fd, buffer, sizeof(buffer), 0);
+						int nbytes = 0;
+						// char *data_out = NULL;
+						if ((slot = find_slot_by_fd(state, fds[i].fd)) != -1) {
+							memset(state[slot].request.data, '\0', BUFF_SIZE);
+							if (handle_read(fds[i].fd, &nbytes, dbhdr, employees, state) == 0) {
+								state[slot].state = STATE_CONNECTED;
 							};
-							close(fds[i].fd);
-							fds[i] = fds[nfds -1];
-							nfds--;
-							i--;
-					
+
+							if (nbytes <= 0) {
+								if (nbytes == 0) {
+									printf("Client on fd %d disconnected.\n", fds[i].fd);
+								} else {
+									perror("recv");
+								};
+								free_slot(state, fds[i].fd);
+								close(fds[i].fd);
+								fds[i] = fds[nfds -1];
+								nfds--;
+								i--;
+				
+							} else {
+								// printf("Data on fd %d: %s\n", fds[i].fd, data_out);
+								// handle_read(fd, &nbytes, dbhdr, employees, &state[slot]); 
+
+								// Send response back to client
+								// char response[BUFF_SIZE];
+								// snprintf(response, sizeof(response), "Server received: %s\n", data_out);
+								// send(fds[i].fd, response, strlen(response), 0);
+							};
 						} else {
-							printf("Data on fd %d: %s\n", fds[i].fd, buffer);
+							printf("Max connections reached.\n");
+							continue;
 						};
+
 					};
 				};
 			};

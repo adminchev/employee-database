@@ -6,6 +6,8 @@
 #include "common.h"
 #include "file.h"
 #include "parse.h"
+#include "client.h"
+#include "server.h"
 
 void print_usage(char *argv[]) {
 	printf("Usage: %s -n -f <database file>\n", argv[0]);
@@ -14,17 +16,20 @@ void print_usage(char *argv[]) {
 }
 
 int main(int argc, char *argv[]) { 
+
 	char *filepath = NULL;
 	bool newfile = false;
-  bool listdb = false;
-  int dbfd = -1;
+	bool listdb = false;
+	int dbfd = -1;
 	int c = 0;
-  struct dbheader_t *header = NULL;
-  struct employee_t *employees = NULL;
-  char *addstring = NULL;
-  char *delstring = NULL;
+	struct dbheader_t *header = NULL;
+	struct employee_t *employees = NULL;
+	char *addstring = NULL;
+	char *delstring = NULL;
+	char *ip_addr = NULL;
 
-	while (( c = getopt(argc, argv, "nf:a:ld:")) != -1 ) {
+	
+	while (( c = getopt(argc, argv, "nf:a:ld:c:")) != -1 ) {
 		switch(c){
 			case 'n':
 				newfile = true;
@@ -34,17 +39,21 @@ int main(int argc, char *argv[]) {
 				filepath = optarg;
 				break;
 
-      case 'a':
-        addstring = optarg;
-        break;
+			case 'c':
+				ip_addr = optarg;
+				break;
 
-      case 'l':
-        listdb = true;
-        break;
+			case 'a':
+				addstring = optarg;
+				break;
 
-      case 'd':
-        delstring = optarg;
-        break;
+			case 'l':
+				listdb = true;
+		        break;
+
+			case 'd':
+			    delstring = optarg;
+			    break;
 
 			case '?':
 				printf("Unknown option -%c.\n", c);
@@ -76,6 +85,12 @@ int main(int argc, char *argv[]) {
       printf("Failed to create database header\n");
       return STATUS_ERROR;
     };
+
+	if (output_file(dbfd, header, NULL) == STATUS_ERROR) {
+      printf("Failed to write database header to file\n");
+      return STATUS_ERROR;
+  }
+
   } else {
 
     dbfd = open_db_file(filepath);
@@ -92,32 +107,38 @@ int main(int argc, char *argv[]) {
     if (read_employees(dbfd, header, &employees) != STATUS_SUCCESS) {
       printf("Something went wrong reading employee data\n");
       return STATUS_ERROR;
-  }
+	}
 
   };
 
-  if (addstring != NULL) {
-    header->count++;
-    employees = realloc(employees, header->count * (sizeof(struct employee_t)));
-    add_employee(header, &employees, addstring);
-  };
+  server_loop(dbfd, header, employees); 
 
-  if (delstring != NULL) {
-    delete_employee(header, &employees, delstring);
-    header->count--;
-    employees = realloc(employees, header->count * (sizeof(struct employee_t)));
-  }
+	// if (ip_addr != NULL) {
+	// 	conn_client(ip_addr);
+	// };
+	//
+	// if (addstring != NULL) {
+	// 	header->count++;
+	// 	employees = realloc(employees, header->count * (sizeof(struct employee_t)));
+	// 	add_employee(header, &employees, addstring);
+	// };
+	//
+	// if (delstring != NULL) {
+	// 	delete_employee(header, &employees, delstring);
+	// 	header->count--;
+	// 	employees = realloc(employees, header->count * (sizeof(struct employee_t)));
+	// }
+	//
+	// if (listdb == true) {
+	// 	list_employees(header, employees);
+	// };
+	//
+	// output_file(dbfd, header, employees);
+	//
+	free(employees);
+	free(header);
+	employees = NULL;
+	header = NULL;
 
-  if (listdb == true) {
-    list_employees(header, employees);
-  };
-
-  output_file(dbfd, header, employees);
-  
-  free(employees);
-  free(header);
-  employees = NULL;
-  header = NULL;
-
-  return 0;
+	return 0;
 }
