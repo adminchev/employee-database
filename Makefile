@@ -1,22 +1,35 @@
-TARGET = bin/dbview
-SRC = $(wildcard src/*.c)
-OBJ = $(patsubst src/%.c, obj/%.o, $(SRC))
+CC = gcc
+CFLAGS = -Wall -Wextra -Wunused -g -Iinclude
+DBVIEW_TARGET = bin/dbview
+CLIENT_TARGET = bin/client
+TARGETS = $(DBVIEW_TARGET) $(CLIENT_TARGET)
 
-run: clean default
-	./$(TARGET) -f ./mynewdb.db -n 
-	./$(TARGET) -f ./mynewdb.db -a "Timmy H.,123 Sheshire Ln.,120"
+DBVIEW_SRC = src/main.c src/parse.c src/file.c src/server.c
+CLIENT_SRC = src/client.c
 
-default: $(TARGET)
+DBVIEW_OBJ = $(patsubst src/%.c, obj/%.o, $(DBVIEW_SRC))
+CLIENT_OBJ = $(patsubst src/%.c, obj/%.o, $(CLIENT_SRC))
+
+.PHONY: all clean run default
+
+all: clean $(DBVIEW_TARGET) $(CLIENT_TARGET) run
+
+default: all
+
+run: $(DBVIEW_TARGET)
+	mkdir -p obj bin
+	./$(DBVIEW_TARGET) -f ./mynewdb.db -n
 
 clean:
 	rm -f obj/*.o
 	rm -f bin/*
 	rm -f *.db
 
-$(TARGET): $(OBJ)
-	gcc -o $@ $?
+$(CLIENT_TARGET): $(CLIENT_OBJ)
+	$(CC) $(CFLAGS) -o $@ $^
 
-obj/%.o : src/%.c
-	gcc -c $< -o $@ -Iinclude
+$(DBVIEW_TARGET): $(DBVIEW_OBJ)
+	$(CC) $(CFLAGS) -o $@ $^
 
-
+obj/%.o: src/%.c
+	$(CC) $(CFLAGS) -c -o $@ $<
