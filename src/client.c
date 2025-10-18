@@ -1,6 +1,5 @@
 #include <sys/socket.h>
 #include <string.h>
-#include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <errno.h>
@@ -11,11 +10,13 @@
 
 static const cmd_mapping_t cmd_map[] = {
 	{"list", CMD_LIST_EMPLOYEES},
+	{"add", CMD_ADD_EMPLOYEE},
+	{"del", CMD_DELETE_EMPLOYEE},
 	{NULL, 0}
 };
 
 int handle_read(int fd) {
-    char buffer[BUFF_SIZE];
+    char buffer[BUFF_SIZE] = {0};
 	if (read(fd, buffer, BUFF_SIZE) == -1) {
 		perror("read");
 		return -1;
@@ -24,8 +25,9 @@ int handle_read(int fd) {
 	return 0;
 };
 
-int handle_interractive_write(int fd, request_t request, cmd_type_e cmd) {
-	request.cmd = cmd;
+int handle_interactive_write(int fd, request_t request) {
+	request.cmd = htonl(request.cmd);
+	request.len = htonl(request.len);
 
 	if (write(fd, &request, sizeof(request_t)) == -1) {
 		perror("write");
@@ -35,9 +37,8 @@ int handle_interractive_write(int fd, request_t request, cmd_type_e cmd) {
 };
 
 int handle_write(int fd, request_t request) {
-	request.cmd = CMD_LIST_EMPLOYEES;
-	request.len = 0;
-
+	request.cmd = htonl(request.cmd);
+    request.len = htonl(request.len);
 	if (write(fd, &request, sizeof(request_t)) == -1) {
 		perror("write");
 	};
@@ -46,17 +47,41 @@ int handle_write(int fd, request_t request) {
 	return 0;
 };
 
-cmd_type_e cmd_parser(char *user_input) {
+int cmd_parser(char *user_input, request_t *request) {
+	char *user_input_cmd = strtok(user_input, " ");
+	char *user_input_data = strtok(NULL, "");
+	if (user_input_cmd == NULL) {
+		printf("Could not get command.\n");
+		return -1;
+	};
+
+	int found = 0;
 	for (int i = 0; cmd_map[i].user_cmd != NULL; i++){
-		if (strcmp(user_input, cmd_map[i].user_cmd) == 0) {
-			return cmd_map[i].server_cmd;
+		if (strcmp(user_input_cmd, cmd_map[i].user_cmd) == 0) {
+			request->cmd = cmd_map[i].server_cmd;
+			found = 1;
+			break;
 		};
 	};
-	return -1;
+	
+	if (found == 0) {
+		return -1;
+	};
+
+	if (user_input_data != NULL) {
+		int len = strlen(user_input_data);
+		if (len > 0) {
+			request->len = len;
+			strncpy(request->data, user_input_data, BUFF_SIZE - 1);
+			request->data[BUFF_SIZE - 1] = '\0';
+		};
+	};
+	return 0;
 };
 
 
 int conn_client(char *ip_str, request_t request) {
+	(void)request;
 	if (ip_str == NULL) {
 		printf("Usage: %s <IP address>\n", ip_str);
 		return -1;
@@ -76,12 +101,10 @@ int conn_client(char *ip_str, request_t request) {
 		return -1;
 	};
 
-	handle_write(fd, request);
-
     return fd;
 };
 
-int interractive_mode(int fd) {
+int interactive_mode(int fd) {
 	char input[256];
 	request_t request = {0};
 
@@ -95,20 +118,27 @@ int interractive_mode(int fd) {
 		if (len > 0 && input[len - 1] == '\n') {
 			input[len - 1] = '\0';
 		};
-		cmd_type_e cmd = cmd_parser(input);
-		handle_interractive_write(fd, request, cmd);
+
+		int result = cmd_parser(input, &request);
+		if (result == -1) {
+			printf("Invalid command.\n");
+			continue;
+		};
+		handle_interactive_write(fd, request);
 
 
 	};
+	return 0;
 };
 
 int main(int argc, char *argv[]) {
 	request_t request = {0};
 	int c = 0;
 	char *ip_str = NULL;
-	int interractive = 0;
+	int interactive = 0;
 	int fd = -1;
-	
+    int cli_args = 0;
+
 	while ( (c = getopt(argc, argv, "c:il")) != -1) {
 		switch (c) {
 			case 'c':
@@ -116,11 +146,12 @@ int main(int argc, char *argv[]) {
 				break;
 			
 			case 'i':
-				interractive = 1;
+				interactive = 1;
 				break;
 
 			case 'l':
 				request.cmd = CMD_LIST_EMPLOYEES;
+				cli_args = 1;
 				break;
 		};
 	};
@@ -130,10 +161,14 @@ int main(int argc, char *argv[]) {
 		printf("Could not connect to server.\n");
 		return -1;
 	};
-	
-	if (interractive == 1) {
-		interractive_mode(fd);
-	};
 
+	if (cli_args == 1) {
+		handle_write(fd, request);
+	};
+	
+	if (interactive == 1) {
+		interactive_mode(fd);
+	};
+	close(fd);
 	return 0;
 }

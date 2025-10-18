@@ -47,7 +47,6 @@ int free_slot(clientstate_t *state, int fd) {
 		if (state[i].fd == fd) {
 			state[i].fd = -1;
 			state[i].state = STATE_DISCONNECTED;
-			// memset(state[i].buffer, '\0', BUFF_SIZE);
 			state[i].bytes_received = 0;
 			memset(&state[i].request, '\0', sizeof(request_t));
 			return 0;
@@ -57,18 +56,28 @@ int free_slot(clientstate_t *state, int fd) {
 }
 
 int handle_list_cmd(int fd, struct dbheader_t *dbhdr, clientstate_t *state, struct employee_t *employees) {
+	(void)state;
 	if (dbhdr == NULL) {
 		printf("Invalid refrence to header or to employees struct\n");
 		return -1;
 	};
 
 	char response[BUFF_SIZE] = {0};
-	int offset = 0;
+	size_t offset = 0;
 
 	offset += snprintf(response + offset, BUFF_SIZE - offset, "Number of employees: %d\n", dbhdr->count);
 
 	for (int i = 0; i < dbhdr->count; i++) {
-		offset += snprintf(response + offset, BUFF_SIZE - offset, "name: %s, address: %s, hours: %d", employees[i].name, employees[i].address, employees[i].hours);
+		offset += snprintf(response + offset, BUFF_SIZE - offset, "\tname: %s, address: %s, hours: %d\n", employees[i].name, employees[i].address, employees[i].hours);
+		if (offset >= BUFF_SIZE) {
+			offset = BUFF_SIZE - 1;
+			printf("Buffer memory exhaused.\n");
+			break;
+		};
+	};
+
+	if (strlen(response) <= offset){
+		response[BUFF_SIZE -1] = '\0';
 	};
 
 	if (send(fd, response, offset, 0) == -1){
@@ -79,34 +88,100 @@ int handle_list_cmd(int fd, struct dbheader_t *dbhdr, clientstate_t *state, stru
 	
 };
 
-int handle_read(int fd, int *nbytes, struct dbheader_t *dbhdr, struct employee_t *employees, clientstate_t *state) {
-	int slot = find_slot_by_fd(state, fd);
-	if (slot == -1) {
-		printf("File descriptor not found for reading.\n");
+int handle_add_employee(int fd, struct dbheader_t *dbhdr, clientstate_t *state, struct employee_t **employees) {
+	if (dbhdr == NULL || state == NULL) {
+		printf("Null pointer passed, exiting.\n");
 		return -1;
 	};
- 	*nbytes = recv(fd, &state[slot].request, sizeof(request_t), 0);
-	if (*nbytes > 0) {
-		state[slot].bytes_received = *nbytes;
-	};
-	if (state[slot].request.cmd == CMD_LIST_EMPLOYEES) {
-		handle_list_cmd(state[slot].fd, dbhdr, state, employees);
-	};
+	char response[BUFF_SIZE] = {0};
+	if (add_employee(dbhdr, employees, state->request.data, response) == -1){
+		printf("Failed to add employee.\n");
+		return -1;
+	}; 
 
-		return *nbytes;
+	if (send(fd, response, strlen(response), 0) == -1){
+		perror("send");
+		return -1;
+	};
+	return 0;
+
 };
 
-int server_loop(int fd, struct dbheader_t *dbhdr, struct employee_t *employees) {
+int handle_delete_employee(int fd, struct dbheader_t *dbhdr, clientstate_t *state, struct employee_t **employees) {
+	if (dbhdr == NULL || state == NULL) {
+		printf("Null pointer passed, exiting.\n");
+		return -1;
+	};
+
+	if (employees == NULL) {
+		printf("No employees, exiting.\n");
+		return -1;
+	};
+    
+	char response[BUFF_SIZE] = {0};
+	if (delete_employee(dbhdr, employees, state->request.data, response) == 0) {
+		dbhdr->count--;
+	} else {
+		printf("Could not delete employee.\n");
+		return -1;
+	};
+
+	if (send(fd, response, strlen(response), 0) == -1){
+		perror("send");
+		return -1;
+	};
+	return 0;
+};
+
+int handle_read(int fd, int dbfd, int *nbytes, struct dbheader_t *dbhdr, struct employee_t **employees, clientstate_t *state) {
+ 	*nbytes = recv(fd, &state->request, sizeof(request_t), 0);
+	if (*nbytes > 0) {
+
+		state->request.cmd = ntohl(state->request.cmd);
+		state->request.len = ntohl(state->request.len);
+		state->bytes_received = *nbytes;
+
+		switch (state->request.cmd) {
+			case CMD_LIST_EMPLOYEES:
+				handle_list_cmd(state->fd, dbhdr, state, *employees);						
+				break;
+
+			case CMD_ADD_EMPLOYEE:
+				if (handle_add_employee(state->fd, dbhdr, state, employees) == 0){
+					output_file(dbfd, dbhdr, *employees);
+				};
+				break;
+
+			case CMD_DELETE_EMPLOYEE:
+				if(handle_delete_employee(state->fd, dbhdr, state, employees) == 0) {
+					output_file(dbfd, dbhdr, *employees);
+				};
+				break;
+
+			default:
+				printf("Invalid command.\n");
+	
+		};
+	};
+
+	return *nbytes;
+};
+
+int server_loop(int dbfd, struct dbheader_t *dbhdr, struct employee_t *employees) {
     
 	clientstate_t state[MAX_CLIENTS] = {0};
 	int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (listen_fd == -1) {
+		perror("socket");
+		return -1;
+	};
 	
 	struct sockaddr_in server_info;
 	memset(&server_info, 0, sizeof(server_info));
     server_info.sin_family = AF_INET;
 	server_info.sin_addr.s_addr = htonl(INADDR_ANY);
 	server_info.sin_port = htons(PORT);
-	struct pollfd fds[MAX_CLIENTS + 1];
+	struct pollfd fds[MAX_CLIENTS + 1] = {0};
 	int nfds = 0;
 	int opt = 1;
 	int slot = -1;
@@ -168,13 +243,10 @@ int server_loop(int fd, struct dbheader_t *dbhdr, struct employee_t *employees) 
 						};
 					
 					} else {
-						// char buffer[4096];
-						// int nbytes = recv(fds[i].fd, buffer, sizeof(buffer), 0);
 						int nbytes = 0;
-						// char *data_out = NULL;
 						if ((slot = find_slot_by_fd(state, fds[i].fd)) != -1) {
 							memset(state[slot].request.data, '\0', BUFF_SIZE);
-							if (handle_read(fds[i].fd, &nbytes, dbhdr, employees, state) == 0) {
+							if (handle_read(fds[i].fd, dbfd, &nbytes, dbhdr, &employees, &state[slot]) == 0) {
 								state[slot].state = STATE_CONNECTED;
 							};
 
@@ -187,18 +259,12 @@ int server_loop(int fd, struct dbheader_t *dbhdr, struct employee_t *employees) 
 								free_slot(state, fds[i].fd);
 								close(fds[i].fd);
 								fds[i] = fds[nfds -1];
+								memset(&fds[nfds - 1], 0, sizeof(fds[nfds - 1])); // Prevent corruption from reusing old pollfd struct
+								fds[i].revents = 0;
 								nfds--;
 								i--;
-				
-							} else {
-								// printf("Data on fd %d: %s\n", fds[i].fd, data_out);
-								// handle_read(fd, &nbytes, dbhdr, employees, &state[slot]); 
-
-								// Send response back to client
-								// char response[BUFF_SIZE];
-								// snprintf(response, sizeof(response), "Server received: %s\n", data_out);
-								// send(fds[i].fd, response, strlen(response), 0);
 							};
+
 						} else {
 							printf("Max connections reached.\n");
 							continue;

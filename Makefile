@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -g -Iinclude
+CFLAGS = -Wall -Wextra -Wunused -g -Iinclude
 DBVIEW_TARGET = bin/dbview
 CLIENT_TARGET = bin/client
 TARGETS = $(DBVIEW_TARGET) $(CLIENT_TARGET)
@@ -19,7 +19,6 @@ default: all
 run: $(DBVIEW_TARGET)
 	mkdir -p obj bin
 	./$(DBVIEW_TARGET) -f ./mynewdb.db -n
-	./$(DBVIEW_TARGET) -f ./mynewdb.db -a "Timmy H.,123 Cheshire Ln.,120"
 
 clean:
 	rm -f obj/*.o
