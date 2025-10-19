@@ -8,7 +8,7 @@
 #define STATUS_SUCCESS 0
 #define PORT 5555
 #define MAX_CLIENTS 10
-#define BUFF_SIZE 4096
+#define BUFF_SIZE 256
 
 #define SAFE_FREE(ptr) do { \
 	free(ptr); \
@@ -44,13 +44,12 @@ typedef enum {
 	STATE_DISCONNECTED,
 	STATE_HELLO,
 	STATE_MSG,
-	STATE_GOODBYE
+	STATE_GOODBYE,
 } state_e;
 
 typedef struct {
 	int fd;
 	state_e state;
-	request_t request;
 	size_t bytes_received;
 } clientstate_t;
 

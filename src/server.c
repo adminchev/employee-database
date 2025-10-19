@@ -19,7 +19,6 @@ void initialize_clients(clientstate_t *state) {
 		state[i].fd = -1;
 		state[i].state = STATE_NEW;
 		state[i].bytes_received = 0;
-		memset(&state[i].request, 0, sizeof(request_t));
 	};
 }
 
@@ -48,7 +47,6 @@ int free_slot(clientstate_t *state, int fd) {
 			state[i].fd = -1;
 			state[i].state = STATE_DISCONNECTED;
 			state[i].bytes_received = 0;
-			memset(&state[i].request, '\0', sizeof(request_t));
 			return 0;
 		}
 	}
@@ -87,13 +85,13 @@ int handle_list_cmd(struct dbheader_t *dbhdr, clientstate_t *state, struct emplo
 	
 };
 
-int handle_add_employee(struct dbheader_t *dbhdr, clientstate_t *state, struct employee_t **employees) {
+int handle_add_employee(struct dbheader_t *dbhdr, clientstate_t *state, struct employee_t **employees, request_t *request) {
 	if (dbhdr == NULL || state == NULL) {
 		printf("Null pointer passed, exiting.\n");
 		return -1;
 	};
 	char response[BUFF_SIZE] = {0};
-	if (add_employee(dbhdr, employees, state->request.data, response) == -1){
+	if (add_employee(dbhdr, employees, request->data, response) == -1){
 		printf("Failed to add employee.\n");
 		return -1;
 	}; 
@@ -106,7 +104,8 @@ int handle_add_employee(struct dbheader_t *dbhdr, clientstate_t *state, struct e
 
 };
 
-int handle_delete_employee(struct dbheader_t *dbhdr, clientstate_t *state, struct employee_t **employees) {
+int handle_delete_employee(struct dbheader_t *dbhdr, clientstate_t *state, struct employee_t **employees, request_t *request) {
+ 
 	if (dbhdr == NULL || state == NULL) {
 		printf("Null pointer passed, exiting.\n");
 		return -1;
@@ -118,7 +117,7 @@ int handle_delete_employee(struct dbheader_t *dbhdr, clientstate_t *state, struc
 	};
     
 	char response[BUFF_SIZE] = {0};
-	if (delete_employee(dbhdr, employees, state->request.data, response) == 0) {
+	if (delete_employee(dbhdr, employees, request->data, response) == 0) {
 		dbhdr->count--;
 	} else {
 		printf("Could not delete employee.\n");
@@ -132,27 +131,26 @@ int handle_delete_employee(struct dbheader_t *dbhdr, clientstate_t *state, struc
 	return 0;
 };
 
-int handle_read(int dbfd, int *nbytes, struct dbheader_t *dbhdr, struct employee_t **employees, clientstate_t *state) {
- 	*nbytes = recv(state->fd, &state->request, sizeof(request_t), 0);
-	if (*nbytes > 0) {
+int handle_read(int dbfd, int *nbytes, struct dbheader_t *dbhdr, struct employee_t **employees, clientstate_t *state, request_t *request) {
+ 	*nbytes = recv(state->fd, request, sizeof(request_t), 0);
+	if (*nbytes == sizeof(request_t)) {
 
-		state->request.cmd = ntohl(state->request.cmd);
-		state->request.len = ntohl(state->request.len);
-		state->bytes_received = *nbytes;
+		request->cmd = ntohl(request->cmd);
+		request->len = ntohl(request->len);
 
-		switch (state->request.cmd) {
+		switch (request->cmd) {
 			case CMD_LIST_EMPLOYEES:
 				handle_list_cmd(dbhdr, state, *employees);						
 				break;
 
 			case CMD_ADD_EMPLOYEE:
-				if (handle_add_employee(dbhdr, state, employees) == 0){
+				if (handle_add_employee(dbhdr, state, employees, request) == 0){
 					output_file(dbfd, dbhdr, *employees);
 				};
 				break;
 
 			case CMD_DELETE_EMPLOYEE:
-				if(handle_delete_employee(dbhdr, state, employees) == 0) {
+				if(handle_delete_employee(dbhdr, state, employees, request) == 0) {
 					output_file(dbfd, dbhdr, *employees);
 				};
 				break;
@@ -161,8 +159,12 @@ int handle_read(int dbfd, int *nbytes, struct dbheader_t *dbhdr, struct employee
 				printf("Invalid command.\n");
 	
 		};
+	} else if (*nbytes < (int)sizeof(request_t)){
+			printf("Patrial request received, terminating.\n");	
+			memset(request, 0, sizeof(*request));
+			return -1;
 	};
-
+	memset(request, 0, sizeof(*request));
 	return *nbytes;
 };
 
@@ -181,6 +183,7 @@ int server_loop(int dbfd, struct dbheader_t *dbhdr, struct employee_t *employees
 	server_info.sin_addr.s_addr = htonl(INADDR_ANY);
 	server_info.sin_port = htons(PORT);
 	struct pollfd fds[MAX_CLIENTS + 1] = {0};
+	request_t request = {0};
 	int nfds = 0;
 	int opt = 1;
 	int slot = -1;
@@ -235,7 +238,6 @@ int server_loop(int dbfd, struct dbheader_t *dbhdr, struct employee_t *employees
 							};
 							state[slot].fd = new_conn;
 							state[slot].state = STATE_NEW;
-							memset(state[slot].request.data, '\0', BUFF_SIZE);
 							fds[nfds].fd = new_conn;
 							fds[nfds].events = POLLIN;
 							nfds++;
@@ -244,12 +246,12 @@ int server_loop(int dbfd, struct dbheader_t *dbhdr, struct employee_t *employees
 					} else {
 						int nbytes = 0;
 						if ((slot = find_slot_by_fd(state, fds[i].fd)) != -1) {
-							memset(state[slot].request.data, '\0', BUFF_SIZE);
-							if (handle_read(dbfd, &nbytes, dbhdr, &employees, &state[slot]) == 0) {
-								state[slot].state = STATE_CONNECTED;
-							};
+							int result = handle_read(dbfd, &nbytes, dbhdr, &employees, &state[slot], &request);
+								if (result > 0 && nbytes == sizeof(request_t)) {	
+									state[slot].state = STATE_CONNECTED;
+								};
 
-							if (nbytes <= 0) {
+							if (nbytes <= 0 || result == -1) {
 								if (nbytes == 0) {
 									printf("Client on fd %d disconnected.\n", fds[i].fd);
 								} else {
@@ -262,6 +264,7 @@ int server_loop(int dbfd, struct dbheader_t *dbhdr, struct employee_t *employees
 								fds[i].revents = 0;
 								nfds--;
 								i--;
+								memset(&request, 0, sizeof(request));
 							};
 
 						} else {
