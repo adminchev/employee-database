@@ -42,6 +42,9 @@ typedef enum {
 	STATE_NEW,
 	STATE_CONNECTED,
 	STATE_DISCONNECTED,
+	STATE_HELLO,
+	STATE_MSG,
+	STATE_GOODBYE
 } state_e;
 
 typedef struct {
