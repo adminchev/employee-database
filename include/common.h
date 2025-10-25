@@ -8,7 +8,7 @@
 #define STATUS_SUCCESS 0
 #define PORT 5555
 #define MAX_CLIENTS 10
-#define BUFF_SIZE 256
+#define BUFF_SIZE 512
 
 #define SAFE_FREE(ptr) do { \
 	free(ptr); \
@@ -36,21 +36,24 @@ typedef struct {
 typedef struct {
 	cmd_type_e type;
 	uint32_t len;
-} hdr_t;
+} proto_hdr_t;
 
 typedef enum {
-	STATE_NEW,
-	STATE_CONNECTED,
-	STATE_DISCONNECTED,
-	STATE_HELLO,
-	STATE_MSG,
-	STATE_GOODBYE,
+	S_NEW,
+	S_CONNECTED,
+	S_DISCONNECTED,
+	S_HELLO,
+	S_MSG,
+	S_WAIT_FOR_PACKET,
+	S_GOODBYE,
 } state_e;
 
 typedef struct {
 	int fd;
 	state_e state;
 	size_t bytes_received;
+	char buffer[sizeof(request_t)];
+	time_t last_activity;
 } clientstate_t;
 
 #endif

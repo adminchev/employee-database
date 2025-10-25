@@ -15,7 +15,7 @@ static const cmd_mapping_t cmd_map[] = {
 	{NULL, 0}
 };
 
-int handle_read(int fd) {
+int handle_client_state(int fd) {
     char buffer[BUFF_SIZE] = {0};
 	if (read(fd, buffer, BUFF_SIZE) == -1) {
 		perror("read");
@@ -32,7 +32,7 @@ int handle_interactive_write(int fd, request_t request) {
 	if (write(fd, &request, sizeof(request_t)) == -1) {
 		perror("write");
 	};
-	handle_read(fd);
+	handle_client_state(fd);
 	return 0;
 };
 
@@ -43,7 +43,7 @@ int handle_write(int fd, request_t request) {
 		perror("write");
 	};
 
-	handle_read(fd);
+	handle_client_state(fd);
 	return 0;
 };
 
