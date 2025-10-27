@@ -44,7 +44,7 @@ int find_slot_by_fd(clientstate_t *state, int fd) {
 	return -1;
 }
 
-int free_slot(clientstate_t *state, int fd) {
+int free_slot_by_fd(clientstate_t *state, int fd) {
 	for (int i = 0; i < MAX_CLIENTS; i++) {
 		if (state[i].fd == fd) {
 			state[i].fd = -1;
@@ -52,10 +52,19 @@ int free_slot(clientstate_t *state, int fd) {
 			state[i].bytes_received = 0;
 			state[i].last_activity = 0;
 			memset(state[i].buffer, 0, sizeof(request_t));
-		}
-	}
+		};
+	};
 	return -1; 
-}
+};
+
+int free_slot(clientstate_t *state) {
+	state->fd = -1;
+	state->state = S_DISCONNECTED;
+	state->bytes_received = 0;
+	state->last_activity = 0;
+	memset(state->buffer, 0, sizeof(request_t));
+	return 0;
+};
 
 int handle_list_cmd(struct dbheader_t *dbhdr, clientstate_t *state, struct employee_t *employees) {
 	if (dbhdr == NULL) {
@@ -135,20 +144,49 @@ int handle_delete_employee(struct dbheader_t *dbhdr, clientstate_t *state, struc
 	return 0;
 };
 
-size_t handle_client_state(clientstate_t *state, request_t *request) {
- 	//Write state logic
-	size_t nbytes = recv(state->fd, state->buffer, sizeof(request_t), 0);
-	if (nbytes > 0 && nbytes <= sizeof(request_t)) {
+ssize_t handle_client_state(clientstate_t *state, request_t *request) {
+	ssize_t nbytes = recv(state->fd, state->buffer, sizeof(request_t), 0);
+
+	if (nbytes > 0 && nbytes <= (ssize_t)sizeof(request_t)) {
+		request_t *req = (request_t *)(state->buffer);
+		req->cmd = ntohl(req->cmd);
+		int proto_version_client = ntohl((*(int *)req->data));
+		int proto_version_server = htonl(VERSION);
 		state->bytes_received += nbytes;
 		state->last_activity = time(NULL);
 		if (state->bytes_received < sizeof(request_t)){
-			state->state = S_WAIT_FOR_PACKET;
+			// state->state = S_WAIT_FOR_PACKET;
 			return 0;
 		} else if (state->bytes_received == sizeof(request_t)){
-			state->state = S_MSG;
-			memcpy(request, state->buffer, sizeof(request_t));
-			request->cmd = ntohl(request->cmd);
-			request->len = ntohl(request->len);
+			// state->state = S_MSG;
+			if (state->state == S_NEW) {
+				request_t *req = (request_t *)state->buffer;
+				if (req->cmd != MSG_HELLO) {
+					return -1;
+				};
+
+				if (proto_version_client != VERSION) {
+					return -1;
+				};
+
+				// request_t response = {0};
+				request->cmd = MSG_HELLO;
+				// response.data = htonl(VERSION);
+				memcpy(request->data, &proto_version_server, sizeof(int));
+				request->len = htonl(sizeof(VERSION));
+
+				if (send(state->fd, request, sizeof(request_t), 0) == -1){
+					perror("send");
+					return -1;
+				};
+				state->state = S_CONNECTED;
+				return nbytes;
+
+			};
+			if (state->state == S_CONNECTED) {
+				memcpy(request, state->buffer, sizeof(request_t));
+			};
+			
 		};
 	};
 
@@ -158,11 +196,11 @@ size_t handle_client_state(clientstate_t *state, request_t *request) {
 		} else {
 			perror("recv");
 		};
-		state->fd = -1;
-		state->last_activity = 0;
-		state->bytes_received = 0;
-		memset(state->buffer, 0, sizeof(state->buffer));
-		state->state = S_DISCONNECTED;
+		// state->fd = -1;
+		// state->last_activity = 0;
+		// state->bytes_received = 0;
+		// memset(state->buffer, 0, sizeof(state->buffer));
+		// state->state = S_DISCONNECTED;
 	};
 	return nbytes;
 
@@ -179,7 +217,7 @@ size_t handle_client_state(clientstate_t *state, request_t *request) {
 	// 	} else {
 	// 		perror("recv");
 	// 	};
-	// 	state->state = S_DISCONNECTED;
+	// 	state->state = S_DISCONNECTED
 	// 	return -1;
 	// };
 	//
@@ -193,6 +231,9 @@ size_t handle_client_state(clientstate_t *state, request_t *request) {
 int process_command(int dbfd, struct dbheader_t *dbhdr, struct employee_t **employees, clientstate_t *state, request_t *request) {
 
 	switch (request->cmd) {
+		case MSG_HELLO:
+			break;
+
 		case CMD_LIST_EMPLOYEES:
 			handle_list_cmd(dbhdr, state, *employees);						
 			break;
@@ -273,11 +314,12 @@ int server_loop(int dbfd, struct dbheader_t *dbhdr, struct employee_t *employees
 						close(state[i].fd);
 						nfds--;
 						printf("Cient %d timed out after 5 seconds\n", state[i].fd);
-						state[i].fd = -1;
-						state[i].state = S_DISCONNECTED;
-						state[i].bytes_received = 0;
-						state[i].last_activity = 0;
-						memset(state[i].buffer, 0, sizeof(state[i].buffer));
+						free_slot(&state[i]);
+						// state[i].fd = -1;
+						// state[i].state = S_DISCONNECTED;
+						// state[i].bytes_received = 0;
+						// state[i].last_activity = 0;
+						// memset(state[i].buffer, 0, sizeof(state[i].buffer));
 					};	
 				};
 			};
@@ -310,7 +352,7 @@ int server_loop(int dbfd, struct dbheader_t *dbhdr, struct employee_t *employees
 					
 					} else {
 						if ((slot = find_slot_by_fd(state, fds[i].fd)) != -1) {
-							size_t nbytes = handle_client_state(&state[slot], &request);
+							ssize_t nbytes = handle_client_state(&state[slot], &request);
 								// if (nbytes > 0 && nbytes == sizeof(request_t)) {	
 								// 	state[slot].state = S_CONNECTED;
 								// };
@@ -321,7 +363,7 @@ int server_loop(int dbfd, struct dbheader_t *dbhdr, struct employee_t *employees
 								// } else {
 								// 	perror("recv");
 								// };
-								free_slot(state, fds[i].fd);
+								free_slot(&state[slot]);
 								close(fds[i].fd);
 								fds[i] = fds[nfds -1];
 								memset(&fds[nfds - 1], 0, sizeof(fds[nfds - 1])); // Prevent corruption from reusing old pollfd struct
@@ -330,9 +372,7 @@ int server_loop(int dbfd, struct dbheader_t *dbhdr, struct employee_t *employees
 								i--;
 								memset(&request, 0, sizeof(request));
 								continue;
-							};
-
-							if (process_command(dbfd, dbhdr, &employees, &state[slot], &request) == 0){
+							} else if (process_command(dbfd, dbhdr, &employees, &state[slot], &request) == 0) {
 								state[slot].bytes_received = 0;
 							};
 

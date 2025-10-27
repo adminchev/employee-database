@@ -15,7 +15,7 @@ static const cmd_mapping_t cmd_map[] = {
 	{NULL, 0}
 };
 
-int handle_client_state(int fd) {
+int handle_read(int fd) {
     char buffer[BUFF_SIZE] = {0};
 	if (read(fd, buffer, BUFF_SIZE) == -1) {
 		perror("read");
@@ -32,7 +32,7 @@ int handle_interactive_write(int fd, request_t request) {
 	if (write(fd, &request, sizeof(request_t)) == -1) {
 		perror("write");
 	};
-	handle_client_state(fd);
+	handle_read(fd);
 	return 0;
 };
 
@@ -43,7 +43,7 @@ int handle_write(int fd, request_t request) {
 		perror("write");
 	};
 
-	handle_client_state(fd);
+	handle_read(fd);
 	return 0;
 };
 
@@ -81,7 +81,12 @@ int cmd_parser(char *user_input, request_t *request) {
 
 
 int conn_client(char *ip_str, request_t request) {
-	(void)request;
+	// (void)request;
+	int proto_version = htonl(VERSION);	
+	request.cmd = htonl(MSG_HELLO);
+	// request.data = htonl(VERSION);
+	memcpy(request.data, &proto_version, sizeof(int));
+	request.len = sizeof(VERSION);
 	if (ip_str == NULL) {
 		printf("Usage: %s <IP address>\n", ip_str);
 		return -1;
@@ -101,7 +106,24 @@ int conn_client(char *ip_str, request_t request) {
 		return -1;
 	};
 
-    return fd;
+	if (send(fd, &request, sizeof(request_t), 0) == -1) {
+		perror("write");
+		return -1;
+	};
+	request_t buffer = {0};
+	if (read(fd, &buffer, sizeof(request_t)) == -1) {
+		perror("read");
+		return -1;
+	};
+	buffer.cmd = ntohl(buffer.cmd);
+	proto_version = ntohl((*(int *)buffer.data));
+	// memcpy(buffer.data, &proto_version, sizeof(VERSION)); 
+	// buffer.data = ntohl((*(int *)buffer.data));
+	buffer.len = ntohl(buffer.len);
+	if (buffer.cmd == MSG_HELLO && proto_version == VERSION){
+		return fd;
+	};
+	return -1;
 };
 
 int interactive_mode(int fd) {

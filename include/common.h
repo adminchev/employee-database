@@ -16,6 +16,7 @@
 } while(0)
 
 typedef enum {
+	MSG_HELLO,
 	CMD_CREATE_DB,
 	CMD_LIST_EMPLOYEES,
 	CMD_ADD_EMPLOYEE,
