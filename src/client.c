@@ -81,7 +81,10 @@ int cmd_parser(char *user_input, request_t *request) {
 
 
 int conn_client(char *ip_str, request_t request) {
-	(void)request;
+	int proto_version = htonl(VERSION);	
+	request.cmd = htonl(MSG_HELLO);
+	memcpy(request.data, &proto_version, sizeof(int));
+	request.len = sizeof(VERSION);
 	if (ip_str == NULL) {
 		printf("Usage: %s <IP address>\n", ip_str);
 		return -1;
@@ -101,7 +104,22 @@ int conn_client(char *ip_str, request_t request) {
 		return -1;
 	};
 
-    return fd;
+	if (send(fd, &request, sizeof(request_t), 0) == -1) {
+		perror("write");
+		return -1;
+	};
+	request_t buffer = {0};
+	if (read(fd, &buffer, sizeof(request_t)) == -1) {
+		perror("read");
+		return -1;
+	};
+	buffer.cmd = ntohl(buffer.cmd);
+	proto_version = ntohl((*(int *)buffer.data));
+	buffer.len = ntohl(buffer.len);
+	if (buffer.cmd == MSG_HELLO && proto_version == VERSION){
+		return fd;
+	};
+	return -1;
 };
 
 int interactive_mode(int fd) {
