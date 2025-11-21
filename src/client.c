@@ -81,10 +81,8 @@ int cmd_parser(char *user_input, request_t *request) {
 
 
 int conn_client(char *ip_str, request_t request) {
-	// (void)request;
 	int proto_version = htonl(VERSION);	
 	request.cmd = htonl(MSG_HELLO);
-	// request.data = htonl(VERSION);
 	memcpy(request.data, &proto_version, sizeof(int));
 	request.len = sizeof(VERSION);
 	if (ip_str == NULL) {
@@ -117,8 +115,6 @@ int conn_client(char *ip_str, request_t request) {
 	};
 	buffer.cmd = ntohl(buffer.cmd);
 	proto_version = ntohl((*(int *)buffer.data));
-	// memcpy(buffer.data, &proto_version, sizeof(VERSION)); 
-	// buffer.data = ntohl((*(int *)buffer.data));
 	buffer.len = ntohl(buffer.len);
 	if (buffer.cmd == MSG_HELLO && proto_version == VERSION){
 		return fd;
