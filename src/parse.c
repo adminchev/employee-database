@@ -175,20 +175,22 @@ int output_file(int fd, struct dbheader_t *dbhdr, struct employee_t *employees) 
 }	
 
 int validate_db_header(int fd, struct dbheader_t **headerOut) {
-	
+
+	struct dbheader_t *header = NULL;
+	int ret = STATUS_ERROR;
 	if (headerOut == NULL) {
-	  return STATUS_ERROR;
+		goto cleanup;
 	};
 
-	struct dbheader_t *header = calloc(1, sizeof(struct dbheader_t));
+	header = calloc(1, sizeof(struct dbheader_t));
 	if(header == NULL) {
 	  printf("Could not allocate memory\n");
-	  return STATUS_ERROR;
+	 goto cleanup;
 	};
 
 	if (read(fd, header, sizeof(struct dbheader_t)) == -1){
-	  perror("read");
-	  return STATUS_ERROR;
+		perror("read");
+		goto cleanup;
 	};
 
 	header->magic = ntohl(header->magic);
@@ -197,33 +199,35 @@ int validate_db_header(int fd, struct dbheader_t **headerOut) {
 	header->filesize = ntohl(header->filesize);
 
 	if(header->magic != HEADER_MAGIC){
-	  printf("Invalid database file\n");
-	  free(header);
-	  return STATUS_ERROR;
+		printf("Invalid database file\n");
+		goto cleanup;
 	};
 
 	if(header->version > VERSION) {
-	  printf("DB file was created on a newer version than the installed\n");
-	  free(header);
-	  return STATUS_ERROR;
+		printf("DB file was created on a newer version than the installed\n");
+		goto cleanup;
 	};
 
 	struct stat dbfilestat = {0};
 	if(fstat(fd, &dbfilestat) == -1) {
-	  perror("fstat");
-	  free(header);
-	  return STATUS_ERROR;
+		perror("fstat");
+		goto cleanup;
 	};
 
 	if (dbfilestat.st_size != header->filesize) {
-	  printf("st_size - %ld, filesize - %u\n", dbfilestat.st_size, header->filesize);
-	  printf("Database file size mismatch, possible corruption\n");
-	  free(header);
-	  return STATUS_ERROR;
+		printf("st_size - %ld, filesize - %u\n", dbfilestat.st_size, header->filesize);
+		printf("Database file size mismatch, possible corruption\n");
+		goto cleanup;
 	}
 
 	*headerOut = header;
-	return STATUS_SUCCESS;
+    header = NULL;
+	ret = STATUS_SUCCESS;
+cleanup:
+	if (header) {
+		free(header);
+	};
+	return ret;
 
 }
 
