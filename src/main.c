@@ -24,7 +24,7 @@ int main(int argc, char *argv[]) {
 	int c = 0;
 	struct dbheader_t *header = NULL;
 	struct employee_t *employees = NULL;
-	
+	int ret = STATUS_ERROR;	
 	while (( c = getopt(argc, argv, "nf:a:ld:c:")) != -1 ) {
 		switch(c){
 			case 'n':
@@ -40,14 +40,15 @@ int main(int argc, char *argv[]) {
 				break;
 
 			default:
-				return STATUS_ERROR;
-		}
+				goto cleanup;
+		};
 	}
 
 	if (filepath == NULL) {
 		printf("Filepath is a required argument.\n");
 		print_usage(argv);
-		return STATUS_SUCCESS;
+		ret = STATUS_SUCCESS;
+		goto cleanup;
 	};
 
   
@@ -56,19 +57,17 @@ int main(int argc, char *argv[]) {
     
 		if (dbfd == -1){
 			printf("Failed to create file %s\n", filepath);
-			return STATUS_ERROR;
+			goto cleanup;
 		};
     
 		if (create_db_header(&header) == STATUS_ERROR) {
 			printf("Failed to create database header\n");
-			close(dbfd);
-			return STATUS_ERROR;
+			goto cleanup;
 		};
 
 		if (output_file(dbfd, header, NULL) == STATUS_ERROR) {
 			printf("Failed to write database header to file\n");
-			close(dbfd);
-			return STATUS_ERROR;
+			goto cleanup;
 		};
 
 	} else {
@@ -76,29 +75,30 @@ int main(int argc, char *argv[]) {
 		dbfd = open_db_file(filepath);
 		if (dbfd == -1) {
 			printf("Could not open file\n");
-			return STATUS_ERROR;
+			goto cleanup;
 		};
 
 		if (validate_db_header(dbfd, &header) == STATUS_ERROR) {
 			printf("Failed to validate database header\n");
-			close(dbfd);
-			return STATUS_ERROR;
+			goto cleanup;
 		};
   
 		if (read_employees(dbfd, header, &employees) != STATUS_SUCCESS) {
 			printf("Something went wrong reading employee data\n");
-			close(dbfd);
-			return STATUS_ERROR;
+			goto cleanup;
 		};
 
 	};
+	ret = server_loop(dbfd, header, employees); 
 
-	server_loop(dbfd, header, employees); 
+cleanup:
 	free(employees);
 	free(header);
 	employees = NULL;
 	header = NULL;
-	close(dbfd);
+	if (dbfd != -1) {
+		close(dbfd);
+	};	
 
-	return 0;
+	return ret;
 }
